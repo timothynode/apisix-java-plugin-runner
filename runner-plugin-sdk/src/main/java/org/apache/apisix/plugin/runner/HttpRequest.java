@@ -21,6 +21,8 @@ import io.github.api7.A6.HTTPReqCall.Req;
 import io.github.api7.A6.TextEntry;
 import org.apache.apisix.plugin.runner.filter.PluginFilter;
 import org.springframework.util.CollectionUtils;
+import reactor.core.publisher.Mono;
+import reactor.netty.NettyOutbound;
 
 import java.nio.ByteBuffer;
 import java.util.HashMap;
@@ -46,6 +48,8 @@ public class HttpRequest implements A6Request {
     private Map<String, String> headers;
 
     private Map<String, String> args;
+
+    private Dispatcher dispatcher;
 
     public HttpRequest(Req req) {
         this.req = req;
@@ -117,6 +121,12 @@ public class HttpRequest implements A6Request {
      */
     public void setPath(String path) {
         response.setPath(path);
+    }
+
+    private NettyOutbound outbound;
+    public Mono<A6ExtraResponse> fetchExtraInfo(String extra) {
+        outbound.send();
+        dispatcher.subscribe();
     }
 
     /**

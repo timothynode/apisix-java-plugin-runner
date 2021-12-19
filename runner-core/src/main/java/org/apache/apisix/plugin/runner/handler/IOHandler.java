@@ -18,9 +18,13 @@
 package org.apache.apisix.plugin.runner.handler;
 
 import lombok.RequiredArgsConstructor;
+import org.apache.apisix.plugin.runner.A6ExtraResponse;
+import org.apache.apisix.plugin.runner.A6Request;
+import org.apache.apisix.plugin.runner.A6Response;
 import org.apache.apisix.plugin.runner.codec.PluginRunnerDecoder;
 import org.apache.apisix.plugin.runner.codec.PluginRunnerEncoder;
 import org.reactivestreams.Publisher;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.netty.NettyInbound;
 import reactor.netty.NettyOutbound;
@@ -35,10 +39,10 @@ public class IOHandler {
     private final PluginRunnerEncoder encoder;
 
     public Publisher<Void> handle(NettyInbound in, NettyOutbound out) {
-        return in.receive().asByteBuffer()
-                .map(decoder::decode)
-                .map(dispatcher::dispatch)
-                .flatMap(e -> out.sendByteArray(Mono.just(encoder.encode(e).array())).then());
+        return  in.receive().asByteBuffer()
+                .map(decoder::decode).flatMap(e -> dispatcher.dispatch(e, out)).filter(e ->
+                !(e instanceof A6ExtraResponse)
+        ).flatMap(e -> out.sendByteArray(Mono.just(encoder.encode(e).array())).then());
     }
 
 }

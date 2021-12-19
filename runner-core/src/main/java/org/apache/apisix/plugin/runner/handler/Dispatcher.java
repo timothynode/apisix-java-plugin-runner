@@ -17,10 +17,16 @@
  
 package org.apache.apisix.plugin.runner.handler;
 
+import org.apache.apisix.plugin.runner.A6ExtraResponse;
 import org.apache.apisix.plugin.runner.A6Request;
 import org.apache.apisix.plugin.runner.A6Response;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+import reactor.netty.NettyOutbound;
 
 public interface Dispatcher {
     
-    A6Response dispatch(A6Request request);
+    Mono<A6Response> dispatch(A6Request request, NettyOutbound outbound);
+
+    Mono<A6ExtraResponse> subscribe(long confToken);
 }

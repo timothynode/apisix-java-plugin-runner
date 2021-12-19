@@ -19,23 +19,20 @@ package org.apache.apisix.plugin.runner.handler;
 
 import com.google.common.cache.Cache;
 import io.github.api7.A6.Err.Code;
-import org.apache.apisix.plugin.runner.A6Conf;
-import org.apache.apisix.plugin.runner.A6ConfigResponse;
-import org.apache.apisix.plugin.runner.A6ErrRequest;
-import org.apache.apisix.plugin.runner.A6ErrResponse;
-import org.apache.apisix.plugin.runner.A6Response;
-import org.apache.apisix.plugin.runner.HttpRequest;
-import org.apache.apisix.plugin.runner.HttpResponse;
+import org.apache.apisix.plugin.runner.*;
 import org.apache.apisix.plugin.runner.filter.PluginFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import reactor.core.publisher.*;
+import reactor.netty.NettyOutbound;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
@@ -60,26 +57,45 @@ public class A6HandlerConfiguration {
 
     @Bean
     public Dispatcher createDispatcher(A6ConfigHandler configHandler, A6HttpCallHandler httpCallHandler) {
-        return request -> {
-            A6Response response;
-            switch (request.getType()) {
-                case 0:
-                    response = new A6ErrResponse(((A6ErrRequest) request).getCode());
-                    return response;
-                case 1:
-                    long confToken = ThreadLocalRandom.current().nextInt(Integer.MAX_VALUE);
-                    response = new A6ConfigResponse(confToken);
-                    configHandler.handle(request, response);
-                    return response;
-                case 2:
-                    response = new HttpResponse(((HttpRequest) request).getRequestId());
-                    httpCallHandler.handle(request, response);
-                    return response;
-                default:
-                    logger.warn("can not dispatch type: {}", request.getType());
-                    response = new A6ErrResponse(Code.SERVICE_UNAVAILABLE);
-                    return response;
+        ConcurrentHashMap<Long, Sinks.One<A6ExtraResponse>> sinksMap = new ConcurrentHashMap<>();
+        return new Dispatcher() {
+            @Override
+            public Mono<A6Response> dispatch(A6Request request, NettyOutbound outbound) {
+                A6Response response;
+                switch (request.getType()) {
+                    case 0:
+                        response = new A6ErrResponse(((A6ErrRequest) request).getCode());
+                        return Mono.just(response);
+                    case 1:
+                        long confToken = ThreadLocalRandom.current().nextInt(Integer.MAX_VALUE);
+                        response = new A6ConfigResponse(confToken);
+                        configHandler.handle(request, response);
+                        return Mono.just(response);
+                    case 2:
+                        ((HttpRequest) request).setDispatcher(this);
+                        response = new HttpResponse(((HttpRequest) request).getRequestId());
+                        httpCallHandler.handle(request, response);
+                        return Mono.just(response);
+                    case 3:
+                        Sinks.One<A6ExtraResponse> a6ExtraResponseOne = sinksMap.get(1L);
+                        //request to Resp
+                        a6ExtraResponseOne.emitValue(new A6ExtraResponse(), (signalType, emitResult) -> false);
+                        return Mono.just(new A6ExtraResponse());
+                    default:
+                        logger.warn("can not dispatch type: {}", request.getType());
+                        response = new A6ErrResponse(Code.SERVICE_UNAVAILABLE);
+                        return Mono.just(response);
+                }
+            }
+
+            @Override
+            public Mono<A6ExtraResponse> subscribe(long confToken) {
+                Sinks.One<A6ExtraResponse> one = Sinks.one();
+                sinksMap.put(confToken, one);
+
+                return one.asMono();
             }
         };
+
     }
 }
